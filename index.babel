@@ -1,0 +1,126 @@
+import thePirateBay from "thepiratebay";
+import inquirer from "inquirer";
+import chalk from "chalk";
+import commander from "commander";
+import deluge from "deluge-add";
+import opener from "opener";
+import copyPaste from "copy-paste";
+
+const TIMEOUT = 8192;
+
+let query;
+commander
+	.arguments("<query>")
+	.option("-l, --lucky", "automatically select the most seeded torrent")
+	.option("-r, --remote", "add to a Deluge server")
+	.option("-c, --copy", "copy the selected magnet link to the clipboard")
+	.option("-o, --open", "open magnet link")
+	.action((input) => query = input)
+	.parse(process.argv);
+
+function error (error, code) {
+	code = code || 1;
+	console.error(chalk.red(error));
+	process.exit(code);
+}
+function green (message) {
+	console.log(chalk.green(message));
+}
+
+function formatTorrents (torrents) {
+	const digits = torrents.reduce((previous, current) => {
+		return Math.max(previous, current.seeders.toString().length);
+	}, 0);
+	const choices = torrents.map((torrent) => {
+		let color;
+		if (torrent.seeders > 64) {
+			color = chalk.green;
+		} else if (torrent.seeders > 16) {
+			color = chalk.yellow;
+		} else {
+			color = chalk.red;
+		}
+		const padding = " ".repeat(digits - torrent.seeders.toString().length);
+		return {
+			name: `${ padding + color(torrent.seeders) } | ${ torrent.verified ? chalk.green("✔") : chalk.red("✗") } | ${ torrent.name.trim() }`,
+			value: torrent,
+		};
+	});
+	choices.push(new inquirer.Separator());
+	return choices;
+}
+
+async function search (query) {
+	const timer = setTimeout(() => {
+		error("Operation timed out");
+	}, TIMEOUT);
+	const torrents = await thePirateBay.search(query, {
+		orderBy: "seeds",
+		sortBy: "desc",
+	});
+	clearTimeout(timer);
+	// console.log(torrents);
+	if (! torrents.length) error("Couldn't find any torrents");
+
+	let choice;
+	if (commander.lucky) {
+		choice = torrents[0];
+	} else {
+		const choices = formatTorrents(torrents);
+		const answer = await inquirer.prompt([{
+			choices,
+			type: "list",
+			name: "torrent",
+			message: "Choose a torrent:",
+			default: torrents[0],
+		}]);
+		choice = answer.torrent;
+	}
+
+	let print = true;
+	if (commander.remote) {
+		print = false;
+		remote(choice.magnetLink);
+	}
+	if (commander.open) {
+		print = false;
+		opener(choice.magnetLink);
+		green("Link opened.");
+	}
+	if (commander.copy) {
+		print = false;
+		copyPaste.copy(choice.magnetLink, () => green("Link copied to clipboard."));
+	}
+
+	if (print) console.log(choice.magnetLink);
+}
+
+async function remote (magnet) {
+	const information = await inquirer.prompt([{
+		type: "input",
+		name: "hostname",
+		message: "Hostname:",
+	}, {
+		type: "input",
+		name: "port",
+		message: "Port:",
+		default: "8112",
+	}, {
+		type: "password",
+		name: "password",
+		message: "Password:",
+	}]);
+	deluge(
+		`http://${ information.hostname }:${ information.port }/json`,
+		information.password,
+		magnet, undefined, (problem) => {
+			if (problem) {
+				error(problem);
+			} else {
+				green("Torrent added to server.");
+			}
+		},
+	);
+}
+
+search(query);
