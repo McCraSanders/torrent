@@ -18,16 +18,16 @@ commander
 	.action((input) => query = input)
 	.parse(process.argv);
 
-function error (error, code) {
+const error = function (error, code) {
 	code = code || 1;
 	console.error(chalk.red(error));
 	process.exit(code);
 }
-function green (message) {
+const green = function (message) {
 	console.log(chalk.green(message));
 }
 
-function formatTorrents (torrents) {
+const formatTorrents = function (torrents) {
 	const digits = torrents.reduce((previous, current) => {
 		return Math.max(previous, current.seeders.toString().length);
 	}, 0);
@@ -50,7 +50,7 @@ function formatTorrents (torrents) {
 	return choices;
 }
 
-async function search (query) {
+const search = async function (query) {
 	const timer = setTimeout(() => {
 		error("Operation timed out");
 	}, TIMEOUT);
@@ -95,7 +95,7 @@ async function search (query) {
 	if (print) console.log(choice.magnetLink);
 }
 
-async function remote (magnet) {
+const remote = async function (magnet) {
 	const information = await inquirer.prompt([{
 		type: "input",
 		name: "hostname",
